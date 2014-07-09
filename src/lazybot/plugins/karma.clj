@@ -4,8 +4,14 @@
 (ns lazybot.plugins.karma
   (:use [lazybot registry info]
         [useful.map :only [keyed]]
-        [somnium.congomongo :only [fetch-one insert! update!]])
+        [somnium.congomongo :only [fetch-one fetch insert! update! fetch-and-modify]])
   (:import (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
+
+(def inc-responses
+  ["+1!" "gained a level!" "is on the rise!" "leveled up!" "hrheehrhen." "BOOM!"])
+
+(def dec-responses
+  ["took a hit! Ouch." "took a dive." "lost a life." "lost a level." "pwned." "O RLY?"])
 
 (defn- key-attrs [nick server channel]
   (let [nick (.toLowerCase nick)]
@@ -16,11 +22,27 @@
   (let [attrs (key-attrs nick server channel)]
     (update! :karma attrs (assoc attrs :karma karma))))
 
+(defn- inc-karma
+  [nick server channel bot]
+  (let [attrs (key-attrs nick server channel)
+        karma-object (fetch-and-modify :karma attrs {:$inc {:karma 1}} :only [:karma] :upsert? true :return-new? true)]
+    (str nick " " (rand-nth inc-responses) " (Karma " (get-in @bot [:config :prefix-arrow]) (:karma karma-object) ")")))
+
+(defn- dec-karma
+  [nick server channel bot]
+  (let [attrs (key-attrs nick server channel)
+        karma-object (fetch-and-modify :karma attrs {:$inc {:karma -1}} :only [:karma] :upsert? true :return-new? true)]
+    (str nick " " (rand-nth dec-responses) " (Karma " (get-in @bot [:config :prefix-arrow]) (:karma karma-object) ")")))
+
 (defn- get-karma
   [nick server channel]
   (let [user-map (fetch-one :karma
                             :where (key-attrs nick server channel))]
     (get user-map :karma 0)))
+
+(defn- get-sorted-karma
+  [server channel dir]
+  (fetch :karma :where (keyed [server channel]) :sort {:karma dir} :limit 10))
 
 (def limit (ref {}))
 
@@ -37,8 +59,8 @@
          (let [current (get-in @limit [nick snick])]
            (cond
             (.equalsIgnoreCase nick snick) ["You can't adjust your own karma."]
-            (= current 3) ["Do I smell abuse? Wait a while before modifying that person's karma again."]
-            (= current new-karma) ["You want me to leave karma the same? Fine, I will."]
+            (= current 5) ["Do I smell abuse? Wait a while before modifying that person's karma again."]
+            (= current new-karma) ["You want me to leave karma the same? Fine I will."]
             :else [(str (get-in @bot [:config :prefix-arrow]) new-karma)
                    (alter limit update-in [nick snick] (fnil inc 0))])))]
     (when apply
@@ -49,19 +71,29 @@
 (defn karma-fn
   "Create a plugin command function that applies f to the karma of the user specified in args."
   [f]
-  (fn [{:keys [com channel args] :as com-m}]
+  (fn [{:keys [com bot channel args] :as com-m}]
     (let [snick (first args)
-          karma (get-karma snick (:network @com) channel)
-          new-karma (f karma)]
-      (change-karma snick new-karma com-m))))
+          msg (f snick (:network @com) channel bot)]
+      (send-message com-m msg))))
+
+(defn print-karma-list
+  "Print list of users with karma"
+  [users dir com-m]
+  (send-message com-m (str dir " scores:"))
+  (doseq [user users]
+    (send-message com-m (str (:nick user) ": " (:karma user)))))
 
 (def print-karma
   (fn [{:keys [com bot channel args] :as com-m}]
     (let [nick (first args)]
-      (send-message com-m
+      (case nick
+        "--high" (print-karma-list (get-sorted-karma (:network @com) channel -1) "High" com-m)
+        "--low" (print-karma-list (get-sorted-karma (:network @com) channel 1) "Low" com-m)
+        nil (print-karma-list (get-sorted-karma (:network @com) channel -1) "High" com-m)
+        :default (send-message com-m
                     (if-let [karma (get-karma nick (:network @com) channel)]
-                      (str nick " has karma " karma ".")
-                      (str "I have no record for " nick "."))))))
+                      (str nick " has " karma "points.")
+                      (str "I have no record for " nick ".")))))))
 
 (defplugin
   (:hook :on-message
@@ -69,17 +101,27 @@
            (let [[_ direction snick] (re-find #"^\((inc|dec|identity) (.+)\)(\s*;.*)?$" message)]
              (when snick
                ((case direction
-                  "inc" (karma-fn inc)
-                  "dec" (karma-fn dec)
+                  "inc" (karma-fn inc-karma)
+                  "dec" (karma-fn dec-karma)
                   "identity" print-karma)
                 (merge com-m {:args [snick]}))))))
+
+  (:hook :on-message
+   (fn [{:keys [message] :as com-m}]
+     (let [[_ snick direction] (re-find #"(\S+[^+\s])(\+\+|--)(\s*;.*)?$" message)]
+       (when snick
+         ((case direction
+            "++" (karma-fn inc-karma)
+            "--" (karma-fn dec-karma))
+          (merge com-m {:args [snick]}))))))
+
   (:cmd
    "Checks the karma of the person you specify."
-   #{"karma" "identity"} print-karma)
+   #{"karma" "identity" "score"} print-karma)
   (:cmd
    "Increases the karma of the person you specify."
-   #{"inc"} (karma-fn inc))
+   #{"inc"} (karma-fn inc-karma))
   (:cmd
    "Decreases the karma of the person you specify."
-   #{"dec"} (karma-fn dec))
+   #{"dec"} (karma-fn dec-karma))
   (:indexes [[:server :channel :nick]]))

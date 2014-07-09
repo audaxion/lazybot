@@ -5,10 +5,16 @@
         [clojure.string :only [triml]]
         [clojure.tools.logging :only [debug]]
         [clojail.core :only [thunk-timeout]])
+  (:require [net.cgrand.enlive-html :as html]
+            [cheshire.core :refer [parse-string]]
+            [clj-http.client :as http])
   (:import java.util.concurrent.TimeoutException
+           java.net.URL
            org.apache.commons.lang.StringEscapeUtils))
 
 (def titlere #"(?i)<title>([^<]+)</title>")
+
+(def pagesynopsis-url "http://www.pagesynopsis.com/pageinfo?targetUrl=")
 
 (defn collapse-whitespace [s]
   (->> s (.split #"\s+") (interpose " ") (apply str)))
@@ -17,6 +23,21 @@
   (if-not (.startsWith url "http")
     (str "http://" url)
     url))
+
+(defn fetch-url [url]
+  (try
+    (parse-string (:body (http/get (str pagesynopsis-url url))) (fn [k] (keyword k)))
+  (catch java.lang.Exception e nil)))
+
+(defn get-title [url]
+  (try
+    (map html/text (html/select (fetch-url url) [:title]))
+  (catch java.lang.Exception e nil)))
+
+(defn get-description [url]
+  (try
+    (html/select (fetch-url url) [:head [:meta (html/attr-has :name "description")]])
+  (catch java.lang.Exception e nil)))
 
 (defn slurp-or-default [url]
   (try
@@ -45,16 +66,25 @@
     (doseq [link (take 1 links)]
       (try
        (thunk-timeout #(let [url (add-url-prefix link)
-                             page (slurp-or-default url)
-                             match (second page)]
-                         (if (and (seq page) (seq match) (not (url-check com bot url)))
+                             page (fetch-url url)
+                             title (:pageTitle page)
+                             description (:pageDescription page)]
+                         (if (and (seq page) (seq title) (not (url-check com bot url)))
                            (send-message com-m
                                               (str "\""
                                                    (triml
                                                     (StringEscapeUtils/unescapeHtml
-                                                     (collapse-whitespace match)))
+                                                     (collapse-whitespace title)))
                                                    "\""))
-                           (when verbose? (send-message com-m "Page has no title."))))
+
+                           (when verbose? (send-message com-m "Page has no title.")))
+                         (if (seq description)
+                           (send-message com-m
+                                         (str "\""
+                                              (triml
+                                                (StringEscapeUtils/unescapeHtml
+                                                  (collapse-whitespace description)))
+                                              "\""))))
                       20 :sec)
        (catch TimeoutException _
          (when verbose?

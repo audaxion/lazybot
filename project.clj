@@ -1,4 +1,4 @@
-(defproject lazybot "0.7.0-alpha1"
+(defproject lazybot "0.7.0-alpha2"
   :description "FIXME: write"
   :dependencies [[org.clojure/clojure "1.4.0"]
                  [org.clojure/tools.reader "0.7.3"]
@@ -7,7 +7,7 @@
                  [clj-time "0.6.0"]
                  [clojail "1.0.6"]
                  [clj-http "0.2.6"]
-                 [irclj "0.4.1"]
+                 [irclj "0.5.0-alpha4"]
                  [congomongo "0.4.0"]
                  [clj-config "0.2.0"]
                  [compojure "1.1.5"]
@@ -30,7 +30,8 @@
                  [me.raynes/laser "0.1.16"]
                  [hiccup "1.0.2"]
                  [me.raynes/least "0.1.3"]
-                 [me.raynes/moments "0.1.1"]]
+                 [me.raynes/moments "0.1.1"]
+                 [org.clojure/math.numeric-tower "0.0.4"]]
   :uberjar-name "lazybot.jar"
   :main lazybot.run
   :copy-deps true

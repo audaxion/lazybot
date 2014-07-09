@@ -12,13 +12,13 @@
 (defn pull-hooks [bot hook-key]
   (map :fn
        (hook-key
-        (apply merge-with concat
-               (map :hooks
-                    (vals (:modules @bot)))))))
+         (apply merge-with concat
+                (map :hooks
+                     (vals (:modules @bot)))))))
 
 (defn nil-comp [com bot channel s action? & fns]
   (reduce #(when %1
-             (%2 com bot channel %1 action?))
+            (%2 com bot channel %1 action?))
           s fns))
 
 (defn call-message-hooks [com bot channel s action?]
@@ -64,11 +64,12 @@
 ;; TODO: Document
 (defn send-message [{:keys [com bot channel]} s & {:keys [action? notice?]}]
   (if-let [result (call-message-hooks com bot channel s action?)]
-    ((cond
-      action? irclj/message
-      notice? irclj/message
-      :else irclj/message)
-     com channel result)))
+    (if action?
+      (irclj/ctcp com channel :action result)
+      ((cond
+         notice? irclj/notice
+         :else irclj/message)
+       com channel result))))
 
 (defn ignore-message? [{:keys [nick bot com]}]
   (-> @bot
@@ -78,25 +79,25 @@
 (defn try-handle [{:keys [nick channel target bot message] :as com-m}]
   (when-not (ignore-message? com-m)
     (on-thread
-     (let [conf (:config @bot)
-           query? (= target nick)
-           max-ops (:max-operations conf)]
-       (when (or (is-command? message (:prepends conf)) query?)
-         (if (dosync
-              (let [pending (:pending-ops @bot)
-                    permitted (< pending max-ops)]
-                (when permitted
-                  (alter bot assoc :pending-ops (inc pending)))))
-           (try
-             (let [n-bmap (into com-m (split-args conf message query?))]
-               (thunk-timeout #((respond n-bmap) n-bmap)
-                              30 :sec))
-             (catch TimeoutException _ (send-message com-m "Execution timed out."))
-             (catch Exception e (.printStackTrace e))
-             (finally
-               (dosync
-                (alter bot assoc :pending-ops (dec (:pending-ops @bot))))))
-           (send-message com-m "Too much is happening at once. Wait until other operations cease.")))))))
+      (let [conf (:config @bot)
+            query? (= target nick)
+            max-ops (:max-operations conf)]
+        (when (or (is-command? message (:prepends conf)) query?)
+          (if (dosync
+                (let [pending (:pending-ops @bot)
+                      permitted (< pending max-ops)]
+                  (when permitted
+                    (alter bot assoc :pending-ops (inc pending)))))
+            (try
+              (let [n-bmap (into com-m (split-args conf message query?))]
+                (thunk-timeout #((respond n-bmap) n-bmap)
+                               30 :sec))
+              (catch TimeoutException _ (send-message com-m "Execution timed out."))
+              (catch Exception e (.printStackTrace e))
+              (finally
+                (dosync
+                  (alter bot assoc :pending-ops (dec (:pending-ops @bot))))))
+            (send-message com-m "Too much is happening at once. Wait until other operations cease.")))))))
 
 ;; ## Plugin DSL
 (defn merge-with-conj [& args]
@@ -106,14 +107,14 @@
   (apply merge-with-conj
          (for [[one & [two three four :as args]] body]
            {one
-            (case
-             one
-             :cmd {:docs two
-                   :triggers three
-                   :fn four}
-             :hook {two {:fn three}}
-             :indexes (vec args)
-             two)})))
+             (case
+                 one
+               :cmd {:docs     two
+                     :triggers three
+                     :fn       four}
+               :hook {two {:fn three}}
+               :indexes (vec args)
+               two)})))
 
 (defn if-seq-error [fn-type possible-seq]
   (if (and (not (fn? possible-seq)) (seq possible-seq))
@@ -134,11 +135,11 @@
          (doseq [idx# ~indexes]
            (apply mongo/add-index! m-name# idx#))
          (dosync
-          (alter bot# assoc-in [:modules m-name#]
-                 {:commands ~scmd
-                  :hooks (into {}
-                               (for [[k# v#] (apply merge-with-conj
-                                                    (make-vector ~hook))]
-                                 [k# (make-vector v#)]))
-                  :cleanup (if-seq-error "cleanup" ~cleanup)
-                  :routes ~routes}))))))
+           (alter bot# assoc-in [:modules m-name#]
+                  {:commands ~scmd
+                   :hooks    (into {}
+                                   (for [[k# v#] (apply merge-with-conj
+                                                        (make-vector ~hook))]
+                                     [k# (make-vector v#)]))
+                   :cleanup  (if-seq-error "cleanup" ~cleanup)
+                   :routes   ~routes}))))))

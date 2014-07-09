@@ -3,9 +3,17 @@
             [lazybot.utilities :refer [trim-string]]
             [cheshire.core :refer [parse-string]] 
             [clojure.string :as s]
-            [clj-http.client :as http])
+            [clj-http.client :as http]
+            [clojure.math.numeric-tower :refer [abs]])
   (:import org.apache.commons.lang.StringEscapeUtils
-           java.net.URLDecoder))
+           java.net.URLDecoder
+           java.text.NumberFormat
+           java.util.Locale))
+
+(defn commify
+  ([n] (commify n (Locale/US)))
+  ([n locale]
+   (.format (NumberFormat/getInstance locale) (bigdec n))))
 
 (defn google [service term]
   "Services: \"web\", \"images\""
@@ -16,6 +24,14 @@
                                 "q"   term}})
       :body
       parse-string))
+
+(defn google-autocomplete [term]
+  (-> (http/get "http://google.com/complete/search"
+                {:query-params {"q" term
+                                "client" "firefox"}})
+      :body
+      parse-string
+      second))
 
 (defn search-string
   "From an argument list, builds a search string."
@@ -57,6 +73,37 @@
                         (get "url")
                         (URLDecoder/decode "UTF-8"))))))
 
+(defn handle-autocomplete
+  "Returns a list of autocompletions for a search phrase"
+  [com-m]
+  (let [results (google-autocomplete (search-string (:args com-m)))]
+    (doseq [result results]
+        (send-message com-m result))))
+
+(defn handle-googlefight
+  "Compares result count between two search terms"
+  [com-m]
+  (let [[_ term1 term2] (re-find #"(.+)\s?\/\s?(.+)" (s/join " " (:args com-m)))]
+    (when (and (seq term1) (seq term2))
+      (let [result1 (google "web" (search-string term1))
+            result2 (google "web" (search-string term2))
+            res1-count (read-string (get-in result1 ["responseData"
+                                        "cursor"
+                                        "estimatedResultCount"]))
+            res2-count (read-string (get-in result2 ["responseData"
+                                        "cursor"
+                                        "estimatedResultCount"]))
+            result-difference (abs (- res1-count res2-count))]
+        (send-message com-m
+                      (str term1 ": " (commify res1-count)))
+        (send-message com-m
+                      (str term2 ": " (commify res2-count)))
+        (if (= res1-count res2-count)
+          (send-message com-m "It's a tie!")
+          (if (> res1-count res2-count)
+            (send-message com-m (str term1 " wins with a difference of " (commify result-difference) "!"))
+            (send-message com-m (str term2 " wins with a difference of " (commify result-difference) "!"))))))))
+
 (defplugin
   (:cmd
    "Searches google for whatever you ask it to, and displays the first result
@@ -68,6 +115,16 @@
     "Searches google for a string, and returns a random image from the results."
     #{"gis"}
     #'handle-image-search)
+
+  (:cmd
+   "Returns a list of autocompletions for a search phrase"
+   #{"gac"}
+   #'handle-autocomplete)
+
+  (:cmd
+   "GOOGLEFIGHT!"
+   #{"googlefight"}
+   #'handle-googlefight)
 
   (:cmd
    "Searches wikipedia via google."

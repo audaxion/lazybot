@@ -1,7 +1,9 @@
 (ns lazybot.plugins.operator
   (:use lazybot.registry
         [lazybot.plugins.login :only [when-privs]])
-  (:require [irclj.core :as ircb]))
+  (:require [clojure.string :as string]
+            [irclj.core :as ircb]
+            [irclj.connection :as connection]))
 
 (defplugin
   (:cmd
@@ -22,11 +24,12 @@
    (fn [{:keys [com bot nick channel args] :as com-m}]
      (when-privs com-m :admin (ircb/kick com channel (first args) :reason (apply str (rest args))))))
 
-  #_(:cmd
-    "Set's the channel's topic. ADMIN ONLY."
-    #{"settopic"}
+  (:cmd
+    "Set's the channel's topic."
+    #{"settopic" "topic"}
     (fn [{:keys [com bot nick channel args] :as com-m}]
-      (when-privs com-m :admin (ircb/topic com channel (apply str (interpose " " args))))))
+      (connection/write-irc-line com "TOPIC" channel
+                                 (connection/end (string/join " " args)))))
 
   (:cmd
    "Ban's whatever you specify. ADMIN ONLY."

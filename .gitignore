@@ -9,3 +9,6 @@ logs
 *log
 .cake
 target
+*.iml
+.idea/
+.lein-repl-history

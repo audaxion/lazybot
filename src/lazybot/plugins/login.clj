@@ -1,6 +1,7 @@
 (ns lazybot.plugins.login
   (:use lazybot.registry
-        [lazybot.utilities :only [prefix]]))
+        [lazybot.utilities :only [prefix]])
+  (:require [clojure.string :as s]))
 
 (defn logged-in [bot]
   (or (:logged-in bot)

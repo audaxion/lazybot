@@ -8,7 +8,7 @@
 (defplugin 
   (:cmd
    "Takes a word and look's up it's definition via the Wordnik dictionary API." 
-   #{"dict"} 
+   #{"dict" "define"}
    (fn [{:keys [bot channel nick args] :as com-m}]
      (send-message
       com-m 

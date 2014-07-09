@@ -43,10 +43,10 @@
   "Creates a new bot and connects it."
   [server]
   (let [bot-config (read-config)
-        [port nick pass] ((juxt :port :bot-name :bot-password)
+        [port nick pass ssl?] ((juxt :port :bot-name :bot-password :ssl?)
                           (bot-config server))
         [fnmap refzors] (base-maps bot-config)
-        irc (irclj/connect server port nick :pass pass :callbacks fnmap)]
+        irc (irclj/connect server port nick :ssl? ssl? :pass pass :callbacks fnmap)]
     (apply (partial irclj/join irc) (:channels (bot-config server)))
     [irc refzors]))
 

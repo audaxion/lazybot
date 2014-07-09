@@ -63,7 +63,7 @@
 
   (:cmd
    "Get condition information for a location."
-   #{"conditions"}
+   #{"conditions" "weather"}
    (fn [{:keys [bot nick args] :as com-m}]
      (when-let [token (token @bot)]
        (send-message

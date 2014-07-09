@@ -35,7 +35,7 @@
 
 (defn- augment [type ircm]
   (condp = type
-    :on-message (assoc ircm :channel (first (:params ircm)) :message (:text ircm))
+    :on-message (assoc ircm :channel (first (:params ircm)) :message (or (:ctcp-text ircm) (:text ircm)) :action? (contains? ircm :ctcp-text))
     :on-join (assoc ircm :channel (first (:params ircm)))
     :on-part (assoc ircm :channel (first (:params ircm)))
     ircm))
@@ -51,13 +51,14 @@
 ;; Note that even the actual handling of commands is done via a hook.
 (def initial-hooks
   "The hooks that every bot, even without plugins, needs to have."
-  {:privmsg (fn [irc m] (dispatch irc :on-message m))
-   :join    (fn [irc m] (dispatch irc :on-join m))
-   :part    (fn [irc m] (dispatch irc :on-part m))
-   :mode    (fn [irc m] (dispatch irc :on-mode m))
-   :kick    (fn [irc m] (dispatch irc :on-kick m))
-   :nick    (fn [irc m] (dispatch irc :on-nick m))
-   :on-quit (fn [irc m] (dispatch irc :on-quit m))
+  {:privmsg     (fn [irc m] (dispatch irc :on-message m))
+   :ctcp-action (fn [irc m] (dispatch irc :on-message m))
+   :join        (fn [irc m] (dispatch irc :on-join m))
+   :part        (fn [irc m] (dispatch irc :on-part m))
+   :mode        (fn [irc m] (dispatch irc :on-mode m))
+   :kick        (fn [irc m] (dispatch irc :on-kick m))
+   :nick        (fn [irc m] (dispatch irc :on-nick m))
+   :on-quit     (fn [irc m] (dispatch irc :on-quit m))
    :raw-log stdout-callback})
 
 (defn reload-config

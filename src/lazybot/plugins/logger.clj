@@ -69,7 +69,7 @@
         (.mkdirs log-dir)
         (spit log-file
               (if action?
-                (format "[%s] *%s %s\n" time nick message)
+                (format "[%s] * %s %s\n" time nick message)
                 (format "[%s] %s: %s\n" time nick message))
               :append true)))))
 
@@ -107,22 +107,22 @@
   (when (log-dir server channel)
     (let [logs (map #(.getName %) (log-files server channel))]
       (list
-       [:h1 "Logs for " channel " on " server]
-       [:ol
-        (->> logs
-             (sort (fn [a b] (compare b a)))
-             (map (fn [log] [:li (link log server channel log)])))]))))
+        [:h1 "Logs for " channel " on " server]
+        [:ol
+         (->> logs
+              (sort (fn [a b] (compare b a)))
+              (map (fn [log] [:li (link log server channel log)])))]))))
 
 (defn server-index
   "A hiccup doc describing logs on a server."
   [server]
   (when (some #{server} (servers))
     (list
-     [:h2 "Channels on " server]
-     [:ul
-      (map (fn [channel]
-             [:li (link channel server channel)])
-           (channels server))])))
+      [:h2 "Channels on " server]
+      [:ul
+       (map (fn [channel]
+              [:li (link channel server channel)])
+            (channels server))])))
 
 (defn index
   "Renders an HTTP index of available logs."
@@ -155,6 +155,8 @@
   (:hook
    :on-send-message
    (fn [com bot channel message action?]
-     (log-message {:com com :bot bot :channel channel :message message
-                   :nick (:nick @com) :action? action?})
+     (when-not
+         (some #{channel} (-> @bot :configs :mute :channels))
+         (log-message {:com com :bot bot :channel channel :message message
+                   :nick (:nick @com) :action? action?}))
      message)))
